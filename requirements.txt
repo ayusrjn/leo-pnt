@@ -5,3 +5,4 @@ skyfield
 pyrtlsdr
 PyQt5
 pyqtgraph
+pyzmq
