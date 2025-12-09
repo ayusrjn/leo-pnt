@@ -1,0 +1,7 @@
+numpy
+scipy
+matplotlib
+skyfield
+pyrtlsdr
+PyQt5
+pyqtgraph

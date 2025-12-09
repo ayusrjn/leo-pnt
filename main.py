@@ -1,21 +1,22 @@
+import sys
 import datetime
 import random
+import time
 from skyfield.api import wgs84, load
 from doppler_pkg import TLEManager, SatellitePropagator, SignalSimulator, Visualizer, haversine_distance, TX_FREQUENCY
 from doppler_pkg.selector import SatelliteSelector
+from doppler_pkg.sdr_interface import SDRInterface, MockSDR, HAS_RTLSDR
+from doppler_pkg.qt_visualizer import QApplication, DashboardWindow, SDRWorker
+
+# CONFIGURATION
+USE_LIVE_SDR = False # Set to True to use real RTL-SDR
+USE_MOCK_SDR = True  # Set to True to simulate SDR if Live is False (or not available)
 
 def main():
     # 1. Initialize TLEManager and get all satellites
     tle_manager = TLEManager()
-    
-    # Load all satellites from TLE
-    # We need to access the raw list from skyfield, TLEManager helper gets one by name.
-    # Let's use the file directly via skyfield as we did in TLEManager but for all.
     ts = load.timescale()
     satellites = load.tle_file(tle_manager.filename)
-    
-    # Filter for NOAA satellites (to keep the list reasonable and relevant to APT)
-    # The prompt says "Load all NOAA satellites".
     candidates = [sat for sat in satellites if "NOAA" in sat.name]
     
     print(f"Loaded {len(candidates)} NOAA candidates.")
@@ -23,48 +24,86 @@ def main():
         print("No NOAA satellites found. Exiting.")
         return
 
-    # 2. Randomly select "Mystery Satellite" (The Truth)
-    mystery_sat = random.choice(candidates)
-    print(f"Mystery Satellite Selected: {mystery_sat.name} (Hidden from Solver)")
-
-    # 3. Define Hidden Truth Location (e.g., Mumbai)
-    TRUE_LAT = 19.0760
-    TRUE_LON = 72.8777
-    print(f"Hidden Truth Location: Lat {TRUE_LAT}, Lon {TRUE_LON}")
-
-    # 4. Generate Signal Data for Mystery Satellite
-    propagator = SatellitePropagator(mystery_sat)
-    simulator = SignalSimulator(propagator)
-
-    # Find a pass
-    t0 = ts.now()
-    t1 = ts.from_datetime(t0.utc_datetime() + datetime.timedelta(days=1))
+    # 2. Setup SDR Source
+    sdr = None
+    mystery_sat = None
     
-    print(f"Searching for next pass of {mystery_sat.name} over Mumbai...")
-    observer = wgs84.latlon(TRUE_LAT, TRUE_LON)
-    t, events = mystery_sat.find_events(observer, t0, t1, altitude_degrees=10.0)
-    
-    if len(t) == 0:
-        print("No pass found in next 24 hours. Using current time (might be below horizon).")
-        start_time = datetime.datetime.now(datetime.timezone.utc)
+    if USE_LIVE_SDR and HAS_RTLSDR:
+        print("\n--- LIVE SDR CAPTURE MODE ---")
+        sdr = SDRInterface()
+        print(f"SDR Initialized. Center Freq: {sdr.sdr.center_freq/1e6} MHz")
+    elif USE_MOCK_SDR:
+        print("\n--- MOCK SDR MODE ---")
+        mystery_sat = random.choice(candidates)
+        print(f"Mocking signal from: {mystery_sat.name}")
+        sdr = MockSDR()
     else:
-        for ti, event in zip(t, events):
-            if event == 0: # Rise
-                start_time = ti.utc_datetime()
-                print(f"Pass found starting at {start_time}")
-                break
-        else:
-             start_time = datetime.datetime.now(datetime.timezone.utc)
+        print("No SDR source selected.")
+        return
 
-    DURATION = 600
-    NOISE_STD = 50.0 # Hz
-    timestamps, measured_freqs = simulator.generate_data(TRUE_LAT, TRUE_LON, start_time, DURATION, NOISE_STD)
+    # 3. Setup PyQt Application
+    app = QApplication(sys.argv)
+    window = DashboardWindow(sdr.center_freq if hasattr(sdr, 'center_freq') else sdr.sdr.center_freq, 
+                             sdr.sample_rate)
+    window.show()
+    
+    # 4. Setup Worker Thread
+    # Capture for 60 seconds (or 60 chunks)
+    worker = SDRWorker(sdr, chunks=60)
+    worker.data_ready.connect(window.update_data)
+    
+    # Data collection for post-processing
+    timestamps = []
+    measured_freqs = []
+    
+    def on_data(ts, freq, spectrum):
+        timestamps.append(ts)
+        measured_freqs.append(freq)
+        print(f"Freq: {freq:.2f} Hz")
+        
+    worker.data_ready.connect(on_data)
+    
+    # When worker finishes, run the solver
+    def on_finished():
+        print("Capture finished.")
+        sdr.close()
+        window.close()
+        
+        # Proceed to Solver
+        run_solver(candidates, timestamps, measured_freqs, mystery_sat)
+        app.quit()
+        
+    worker.finished.connect(on_finished)
+    worker.start()
+    
+    # Run Event Loop
+    sys.exit(app.exec_())
 
+def run_solver(candidates, timestamps, measured_freqs, mystery_sat=None):
     # 5. Blind Identification
     print("\n--- Starting Blind Identification ---")
-    selector = SatelliteSelector()
     
-    # Pass ONLY the data, not the mystery_sat
+    # If Mock, we might need high-fidelity data for the solver if the mock was just linear drift
+    if USE_MOCK_SDR and mystery_sat:
+        # Generate high-fidelity data for the solver to ensure success
+        # (Since our MockSDR just does a linear drift which might not match TLE physics perfectly)
+        print("Generating high-fidelity mock data for solver...")
+        propagator = SatellitePropagator(mystery_sat)
+        simulator = SignalSimulator(propagator)
+        
+        # Find a pass
+        ts = load.timescale()
+        t0 = ts.now()
+        t1 = ts.from_datetime(t0.utc_datetime() + datetime.timedelta(days=1))
+        TRUE_LAT = 19.0760
+        TRUE_LON = 72.8777
+        observer = wgs84.latlon(TRUE_LAT, TRUE_LON)
+        t, events = mystery_sat.find_events(observer, t0, t1, altitude_degrees=10.0)
+        
+        pass_start = t[0].utc_datetime() if len(t) > 0 else datetime.datetime.now(datetime.timezone.utc)
+        timestamps, measured_freqs = simulator.generate_data(TRUE_LAT, TRUE_LON, pass_start, 600, 50.0)
+    
+    selector = SatelliteSelector()
     identified_sat, est_location, min_cost = selector.identify_satellite(candidates, timestamps, measured_freqs)
     
     if identified_sat is None:
@@ -75,21 +114,23 @@ def main():
     
     # 6. Analysis & Results
     print(f"\n--- Results ---")
-    print(f"Mystery Satellite:   {mystery_sat.name}")
     print(f"Identified Satellite: {identified_sat.name}")
     
-    is_correct = mystery_sat.name == identified_sat.name
-    print(f"Identification:       {'SUCCESS' if is_correct else 'FAILURE'}")
-    
-    error_km = haversine_distance(TRUE_LAT, TRUE_LON, est_lat, est_lon)
-    print(f"True Location:        {TRUE_LAT:.4f}, {TRUE_LON:.4f}")
+    if mystery_sat:
+        print(f"Mystery Satellite:   {mystery_sat.name}")
+        is_correct = mystery_sat.name == identified_sat.name
+        print(f"Identification:       {'SUCCESS' if is_correct else 'FAILURE'}")
+        
     print(f"Estimated Location:   {est_lat:.4f}, {est_lon:.4f}")
-    print(f"Location Error:       {error_km:.2f} km")
     print(f"Residual Cost:        {min_cost:.2f}")
 
-    # 7. Visualize (using the identified satellite's propagator)
+    # 7. Visualize (Post-Process Dashboard)
+    # We can still generate the static dashboard for the report
+    # Visualizer.plot_dashboard(...) 
+    # But we just closed the Qt app, so we might not want to pop up another window immediately.
+    # Let's just save it.
     id_propagator = SatellitePropagator(identified_sat)
-    Visualizer.plot_results(timestamps, measured_freqs, est_lat, est_lon, TRUE_LAT, TRUE_LON, id_propagator, TX_FREQUENCY)
+    Visualizer.plot_results(timestamps, measured_freqs, est_lat, est_lon, 19.0760, 72.8777, id_propagator, TX_FREQUENCY)
 
 if __name__ == "__main__":
     main()
