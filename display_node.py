@@ -16,6 +16,9 @@ class ZMQSubscriberThread(QThread):
     Background thread to receive data from Compute Node via ZMQ.
     """
     data_ready = pyqtSignal(object, float, object) # timestamp, freq, spectrum
+    log_ready = pyqtSignal(str)
+    pos_ready = pyqtSignal(float, float, float, float) # lat, lon, true_lat, true_lon
+    doppler_ready = pyqtSignal(object) # list of dicts
     
     def __init__(self, ip, port):
         super().__init__()
@@ -37,12 +40,26 @@ class ZMQSubscriberThread(QThread):
                 payload = pickle.loads(data)
                 
                 # Extract
-                timestamp = payload['timestamp']
-                freq = payload['freq']
-                spectrum = payload['spectrum']
+                msg_type = payload.get('type', 'spectrum')
                 
-                # Emit
-                self.data_ready.emit(timestamp, freq, spectrum)
+                if msg_type == 'spectrum':
+                    timestamp = payload['timestamp']
+                    freq = payload['freq']
+                    spectrum = payload['spectrum']
+                    self.data_ready.emit(timestamp, freq, spectrum)
+                    
+                elif msg_type == 'log':
+                    self.log_ready.emit(payload['msg'])
+                    
+                elif msg_type == 'position':
+                    self.pos_ready.emit(payload['lat'], payload['lon'], payload.get('true_lat', 0.0), payload.get('true_lon', 0.0))
+                    
+                elif msg_type == 'doppler_data':
+                    self.doppler_ready.emit(payload['sats'])
+                    
+            except Exception as e:
+                print(f"[ZMQSubscriber] Error: {e}")
+                break
                 
             except Exception as e:
                 print(f"[ZMQSubscriber] Error: {e}")
@@ -72,6 +89,9 @@ def main():
     # Setup Subscriber
     subscriber = ZMQSubscriberThread(COMPUTE_NODE_IP, ZMQ_PORT)
     subscriber.data_ready.connect(window.update_data)
+    subscriber.log_ready.connect(window.update_log)
+    subscriber.pos_ready.connect(window.update_position)
+    subscriber.doppler_ready.connect(window.update_doppler)
     subscriber.start()
     
     try:

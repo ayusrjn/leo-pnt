@@ -2,7 +2,7 @@ import sys
 import time
 import datetime
 import numpy as np
-from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QLabel
+from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QTextEdit, QSplitter
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
 import pyqtgraph as pg
 
@@ -85,79 +85,106 @@ class DashboardWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
         
-        # --- PLOT 1: Live Spectrum ---
-        self.spec_plot = pg.PlotWidget(title="Real-Time Spectrum (Zoomed)")
-        self.spec_plot.setLabel('left', 'Power', units='dB')
-        self.spec_plot.setLabel('bottom', 'Frequency Offset', units='Hz')
-        self.spec_plot.showGrid(x=True, y=True)
+        # --- NEW: Solver Visualization Layout ---
+        # Splitter to resize between Map and Log
+        self.main_splitter = QSplitter(Qt.Vertical)
+        layout.addWidget(self.main_splitter)
         
-        # ** FIX 1: ZOOM IN ** # Only show +/- 25 kHz around the center. 
-        self.spec_plot.setXRange(-25000, 25000)
+        # Top Widget for Map
+        self.map_plot = pg.PlotWidget(title="Estimated Position (Lat/Lon)")
+        self.map_plot.setLabel('left', 'Latitude')
+        self.map_plot.setLabel('bottom', 'Longitude')
+        self.map_plot.showGrid(x=True, y=True)
+        # Add True Position Marker
+        self.true_pos_scatter = pg.ScatterPlotItem(size=15, pen=pg.mkPen(None), brush=pg.mkBrush(0, 255, 0, 255), symbol='x')
+        self.map_plot.addItem(self.true_pos_scatter)
+        # Add Estimated Position Marker
+        self.est_pos_scatter = pg.ScatterPlotItem(size=15, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 255), symbol='o')
+        self.map_plot.addItem(self.est_pos_scatter)
+        # Add History Trace
+        self.pos_history_curve = self.map_plot.plot(pen=pg.mkPen('r', width=1, style=Qt.DotLine))
+        self.pos_history_x = []
+        self.pos_history_y = []
         
-        self.spec_curve = self.spec_plot.plot(pen='y') # Yellow line
-        layout.addWidget(self.spec_plot)
+        self.main_splitter.addWidget(self.map_plot)
         
-        # --- PLOT 2: Waterfall ---
-        self.waterfall_view = pg.PlotWidget(title="Waterfall History (Doppler Trace)")
-        self.waterfall_view.setLabel('left', 'Time', units='scans')
-        self.waterfall_view.setLabel('bottom', 'Frequency Bin')
+        # Middle Widget for Doppler Tracks
+        self.doppler_plot = pg.PlotWidget(title="Satellite Doppler Tracks")
+        self.doppler_plot.setLabel('left', 'Doppler Shift', units='Hz')
+        self.doppler_plot.setLabel('bottom', 'Time Step')
+        self.doppler_plot.showGrid(x=True, y=True)
+        self.doppler_plot.addLegend()
         
-        self.img_item = pg.ImageItem()
-        self.waterfall_view.addItem(self.img_item)
+        self.sat_curves = {} # {sat_id: {'curve': PlotCurveItem, 'x': [], 'y': []}}
+        self.time_step = 0
         
-        # Colormap (Blue background -> Yellow signal)
-        pos = np.array([0.0, 0.2, 1.0])
-        color = np.array([[0,0,30,255], [0,0,255,255], [255,255,0,255]], dtype=np.ubyte)
-        cmap = pg.ColorMap(pos, color)
-        self.img_item.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
+        self.main_splitter.addWidget(self.doppler_plot)
         
-        layout.addWidget(self.waterfall_view)
+        # Bottom Widget for Log
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setStyleSheet("background-color: black; color: lime; font-family: Monospace;")
         
-        # Buffer for Waterfall
-        self.history_size = 200
-        self.waterfall_data = np.zeros((self.history_size, self.fft_size)) 
+        self.main_splitter.addWidget(self.log_text)
+        
+        # Set initial sizes
+        self.main_splitter.setSizes([400, 300, 100])
+
+    def update_log(self, message):
+        self.log_text.append(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {message}")
+        # Auto scroll
+        sb = self.log_text.verticalScrollBar()
+        sb.setValue(sb.maximum())
+
+    def update_position(self, lat, lon, true_lat=None, true_lon=None):
+        self.est_pos_scatter.setData([lon], [lat])
+        
+        self.pos_history_x.append(lon)
+        self.pos_history_y.append(lat)
+        self.pos_history_curve.setData(self.pos_history_x, self.pos_history_y)
+        
+        if true_lat is not None and true_lon is not None:
+            self.true_pos_scatter.setData([true_lon], [true_lat])
+            
+        # Auto range?
+        # self.map_plot.autoRange()
+
+    def update_doppler(self, sats_data):
+        """
+        sats_data: list of {'sat_id': int, 'doppler': float}
+        """
+        self.time_step += 1
+        
+        # Assign colors based on sat_id
+        # Simple hash to color
+        def get_color(sat_id):
+            np.random.seed(sat_id)
+            return tuple(np.random.randint(50, 255, 3))
+            
+        current_sats = set()
+        
+        for sat in sats_data:
+            sat_id = sat['sat_id']
+            doppler = sat['doppler']
+            current_sats.add(sat_id)
+            
+            if sat_id not in self.sat_curves:
+                # Create new curve
+                color = get_color(sat_id)
+                curve = self.doppler_plot.plot(pen=pg.mkPen(color, width=2), name=f"Sat {sat_id}")
+                self.sat_curves[sat_id] = {'curve': curve, 'x': [], 'y': []}
+            
+            # Update data
+            self.sat_curves[sat_id]['x'].append(self.time_step)
+            self.sat_curves[sat_id]['y'].append(doppler)
+            
+            # Limit history
+            if len(self.sat_curves[sat_id]['x']) > 100:
+                self.sat_curves[sat_id]['x'].pop(0)
+                self.sat_curves[sat_id]['y'].pop(0)
+                
+            self.sat_curves[sat_id]['curve'].setData(self.sat_curves[sat_id]['x'], self.sat_curves[sat_id]['y'])
 
     def update_data(self, timestamp, freq, spectrum):
-        # spectrum is the magnitude from SDRWorker
-        # We need to convert to dB for visualization
-        
-        # Ensure spectrum size matches buffer (handle potential mismatch from simple downsampling)
-        if len(spectrum) != self.fft_size:
-            # Resample to match fft_size if needed, or just slice/pad
-            # For now, let's assume SDRWorker sends roughly the right size or we adjust
-            # Simple linear interpolation to resize if needed would be better, but let's just clip/pad for speed
-            if len(spectrum) > self.fft_size:
-                spectrum = spectrum[:self.fft_size]
-            else:
-                spectrum = np.pad(spectrum, (0, self.fft_size - len(spectrum)))
-        
-        # Convert to dB
-        psd = 20 * np.log10(np.abs(spectrum) + 1e-12)
-        
-        # 1. Update Spectrum Plot
-        # Create freq axis centered at 0
-        freqs = np.fft.fftshift(np.fft.fftfreq(self.fft_size, 1/self.sample_rate))
-        # But wait, SDRWorker sends us `fft_downsampled`. 
-        # If we downsampled by factor N, effective sample rate for axis is sample_rate / N?
-        # No, downsampling in time domain reduces bandwidth. 
-        # Downsampling in frequency domain (decimating FFT output) just reduces resolution.
-        # My SDRWorker code `fft_downsampled = fft_data[::factor]` decimates the FFT bins.
-        # So the frequency span is the same (sample_rate), but fewer points.
-        
-        # Re-calculate freqs for the plot
-        freqs = np.linspace(-self.sample_rate/2, self.sample_rate/2, self.fft_size)
-        
-        self.spec_curve.setData(freqs, psd)
-        
-        # 2. Update Waterfall
-        self.waterfall_data = np.roll(self.waterfall_data, -1, axis=0)
-        self.waterfall_data[-1] = psd
-        
-        # ** FIX 2: CONTRAST **
-        # Set levels manually to hide noise. 
-        # Noise floor is usually around 0-10, Signal is 20-40.
-        self.img_item.setImage(self.waterfall_data.T, autoLevels=False, levels=[10, 50])
-        
-        # Update title with latest frequency
-        self.spec_plot.setTitle(f"Real-Time Spectrum (Peak: {freq:.2f} Hz)")
+        pass # Spectrum visualization removed
             
