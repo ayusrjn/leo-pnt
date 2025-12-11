@@ -1,4 +1,4 @@
-# doppler_pkg/tle_manager.py
+                            
 import os
 import time
 import requests
@@ -19,7 +19,7 @@ class TLEManager:
         if not os.path.exists(self.filename):
             return False
         file_age = time.time() - os.path.getmtime(self.filename)
-        return file_age < 86400  # 24 hours in seconds
+        return file_age < 86400                       
 
     def _download_tle(self):
         """Download fresh TLE data from CelesTrak."""

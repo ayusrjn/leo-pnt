@@ -7,7 +7,7 @@ class PositionEngine:
     """
     def __init__(self):
         self.max_iter = 10
-        self.convergence_thresh = 1e-3 # meters
+        self.convergence_thresh = 1e-3         
 
     def solve_epoch(self, observations: list, prior_pos=None):
         """
@@ -25,15 +25,15 @@ class PositionEngine:
             residuals: Final measurement residuals
         """
         if len(observations) < 4:
-            # Need at least 4 satellites for 3D pos + time
+                                                          
             return None, None, None, None
             
-        # Initial State: [x, y, z, b]
+                                     
         if prior_pos is not None:
             state = np.array([prior_pos[0], prior_pos[1], prior_pos[2], 0.0])
         else:
-            # Cold Start Strategy: Centroid of satellites
-            # This puts us roughly in the right part of the world
+                                                         
+                                                                 
             sx_list = [o['sat_x'] for o in observations]
             sy_list = [o['sat_y'] for o in observations]
             sz_list = [o['sat_z'] for o in observations]
@@ -42,7 +42,7 @@ class PositionEngine:
             avg_y = np.mean(sy_list)
             avg_z = np.mean(sz_list)
             
-            # Project to Earth Surface
+                                      
             r = np.sqrt(avg_x**2 + avg_y**2 + avg_z**2)
             RE = 6378137.0
             scale = RE / r
@@ -50,7 +50,7 @@ class PositionEngine:
             state = np.array([avg_x * scale, avg_y * scale, avg_z * scale, 0.0])
         
         for i in range(self.max_iter):
-            # Formulate H matrix and y vector (pre-fit residuals)
+                                                                 
             H = []
             y = []
             
@@ -60,19 +60,19 @@ class PositionEngine:
                 sx, sy, sz = obs['sat_x'], obs['sat_y'], obs['sat_z']
                 pr_meas = obs['pseudorange']
                 
-                # Geometric range
+                                 
                 dist = np.sqrt((sx - rx)**2 + (sy - ry)**2 + (sz - rz)**2)
                 
-                # Predicted Pseudorange
+                                       
                 pr_pred = dist + b
                 
-                # Residual (Measured - Predicted)
-                # Note: Convention varies. Let's use dy = Meas - Pred
+                                                 
+                                                                     
                 dy = pr_meas - pr_pred
                 y.append(dy)
                 
-                # Partial derivatives (Design Matrix row)
-                # d(pr)/dx = - (sx - rx) / dist
+                                                         
+                                               
                 dr_dx = -(sx - rx) / dist
                 dr_dy = -(sy - ry) / dist
                 dr_dz = -(sz - rz) / dist
@@ -83,10 +83,10 @@ class PositionEngine:
             H = np.array(H)
             y = np.array(y)
             
-            # Least Squares Solution
-            # dx = (H^T H)^-1 H^T y
+                                    
+                                   
             try:
-                # Normal equations
+                                  
                 HtH = H.T @ H
                 HtH_inv = np.linalg.inv(HtH)
                 dx = HtH_inv @ H.T @ y
@@ -100,17 +100,17 @@ class PositionEngine:
                 print("Singular matrix in Position Solver.")
                 return None, None, None, None
                 
-        # Compute DOPs
-        # Q = (H^T H)^-1
-        # GDOP = sqrt(trace(Q))
-        # PDOP = sqrt(Qxx + Qyy + Qzz)
+                      
+                        
+                               
+                                      
         try:
             Q = np.linalg.inv(H.T @ H)
             gdop = np.sqrt(np.trace(Q))
             pdop = np.sqrt(Q[0,0] + Q[1,1] + Q[2,2])
             tdop = np.sqrt(Q[3,3])
             
-            # For HDOP/VDOP need rotation to ENU, skipping for now
+                                                                  
             dop = {"GDOP": gdop, "PDOP": pdop, "TDOP": tdop}
             
         except:

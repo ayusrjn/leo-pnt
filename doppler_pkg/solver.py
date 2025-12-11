@@ -1,4 +1,4 @@
-# doppler_pkg/solver.py
+                       
 import numpy as np
 from scipy.optimize import least_squares
 from skyfield.api import load
@@ -22,7 +22,7 @@ class GeolocationSolver:
         """
         print("Solving for location...")
         
-        # Convert timestamps to Skyfield Time objects once for efficiency
+                                                                         
         ts_objects = [self.ts.from_datetime(t) for t in timestamps]
         measured_freqs_np = np.array(measured_freqs)
 
@@ -37,10 +37,10 @@ class GeolocationSolver:
             
             return measured_freqs_np - np.array(theoretical_freqs)
 
-        # Initial guess: (0, 0)
+                               
         initial_guess = [0.0, 0.0]
         
-        # Bounds: Lat [-90, 90], Lon [-180, 180]
+                                                
         bounds = ([-90, -180], [90, 180])
 
         result = least_squares(_residuals, initial_guess, bounds=bounds, verbose=0)

@@ -3,7 +3,7 @@ import numpy as np
 from doppler_pkg.position_engine import PositionEngine
 
 def main():
-    # 1. Load Data
+                  
     try:
         df = pd.read_csv("leo_s9_results.csv")
     except FileNotFoundError:
@@ -12,19 +12,19 @@ def main():
 
     print(f"Loaded {len(df)} observations.")
     
-    # 2. Initialize Solver
+                          
     engine = PositionEngine()
     
-    # 3. Solve Epoch by Epoch
+                             
     epochs = df['time'].unique()
     epochs.sort()
     
     results = []
     
-    # True position (from sim config)
+                                     
     TRUE_LAT = 19.0760
     TRUE_LON = 72.8777
-    # Convert to ECEF
+                     
     RE = 6378137.0
     lat_rad = np.radians(TRUE_LAT)
     lon_rad = np.radians(TRUE_LON)
@@ -47,15 +47,15 @@ def main():
                 'pseudorange': row['pseudorange']
             })
             
-        # DEBUG: Start with offset to demonstrate convergence
-        # offset_pos = true_pos + np.array([100000.0, 100000.0, 100000.0]) # ~170km offset
-        # est_pos, bias, dop, res = engine.solve_epoch(observations, prior_pos=offset_pos)
+                                                             
+                                                                                          
+                                                                                          
         
-        # Test Cold Start (Centroid Guess)
+                                          
         est_pos, bias, dop, res = engine.solve_epoch(observations, prior_pos=None)
         
         if est_pos is not None:
-            # Calculate Error
+                             
             error_vec = est_pos - true_pos
             error_3d = np.linalg.norm(error_vec)
             
@@ -71,7 +71,7 @@ def main():
         else:
             print(f"Time {t}: Failed to solve (Not enough sats?)")
 
-    # 4. Summary
+                
     if results:
         res_df = pd.DataFrame(results)
         print("\n--- Positioning Performance ---")

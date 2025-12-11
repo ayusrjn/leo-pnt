@@ -1,4 +1,4 @@
-# doppler_pkg/propagator.py
+                           
 import numpy as np
 from skyfield.api import load, wgs84, EarthSatellite
 from skyfield.timelib import Time

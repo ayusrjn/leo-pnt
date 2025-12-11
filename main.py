@@ -8,12 +8,12 @@ from doppler_pkg.selector import SatelliteSelector
 from doppler_pkg.sdr_interface import SDRInterface, MockSDR, HAS_RTLSDR
 from doppler_pkg.qt_visualizer import QApplication, DashboardWindow, SDRWorker
 
-# CONFIGURATION
-USE_LIVE_SDR = False # Set to True to use real RTL-SDR
-USE_MOCK_SDR = True  # Set to True to simulate SDR if Live is False (or not available)
+               
+USE_LIVE_SDR = False                                  
+USE_MOCK_SDR = True                                                                   
 
 def main():
-    # 1. Initialize TLEManager and get all satellites
+                                                     
     tle_manager = TLEManager()
     ts = load.timescale()
     satellites = load.tle_file(tle_manager.filename)
@@ -24,7 +24,7 @@ def main():
         print("No NOAA satellites found. Exiting.")
         return
 
-    # 2. Setup SDR Source
+                         
     sdr = None
     mystery_sat = None
     
@@ -41,18 +41,18 @@ def main():
         print("No SDR source selected.")
         return
 
-    # 3. Setup PyQt Application
+                               
     app = QApplication(sys.argv)
     window = DashboardWindow(sdr.center_freq if hasattr(sdr, 'center_freq') else sdr.sdr.center_freq, 
                              sdr.sample_rate)
     window.show()
     
-    # 4. Setup Worker Thread
-    # Capture for 60 seconds (or 60 chunks)
+                            
+                                           
     worker = SDRWorker(sdr, chunks=60)
     worker.data_ready.connect(window.update_data)
     
-    # Data collection for post-processing
+                                         
     timestamps = []
     measured_freqs = []
     
@@ -63,35 +63,35 @@ def main():
         
     worker.data_ready.connect(on_data)
     
-    # When worker finishes, run the solver
+                                          
     def on_finished():
         print("Capture finished.")
         sdr.close()
         window.close()
         
-        # Proceed to Solver
+                           
         run_solver(candidates, timestamps, measured_freqs, mystery_sat)
         app.quit()
         
     worker.finished.connect(on_finished)
     worker.start()
     
-    # Run Event Loop
+                    
     sys.exit(app.exec_())
 
 def run_solver(candidates, timestamps, measured_freqs, mystery_sat=None):
-    # 5. Blind Identification
+                             
     print("\n--- Starting Blind Identification ---")
     
-    # If Mock, we might need high-fidelity data for the solver if the mock was just linear drift
+                                                                                                
     if USE_MOCK_SDR and mystery_sat:
-        # Generate high-fidelity data for the solver to ensure success
-        # (Since our MockSDR just does a linear drift which might not match TLE physics perfectly)
+                                                                      
+                                                                                                  
         print("Generating high-fidelity mock data for solver...")
         propagator = SatellitePropagator(mystery_sat)
         simulator = SignalSimulator(propagator)
         
-        # Find a pass
+                     
         ts = load.timescale()
         t0 = ts.now()
         t1 = ts.from_datetime(t0.utc_datetime() + datetime.timedelta(days=1))
@@ -112,7 +112,7 @@ def run_solver(candidates, timestamps, measured_freqs, mystery_sat=None):
 
     est_lat, est_lon = est_location
     
-    # 6. Analysis & Results
+                           
     print(f"\n--- Results ---")
     print(f"Identified Satellite: {identified_sat.name}")
     
@@ -124,11 +124,11 @@ def run_solver(candidates, timestamps, measured_freqs, mystery_sat=None):
     print(f"Estimated Location:   {est_lat:.4f}, {est_lon:.4f}")
     print(f"Residual Cost:        {min_cost:.2f}")
 
-    # 7. Visualize (Post-Process Dashboard)
-    # We can still generate the static dashboard for the report
-    # Visualizer.plot_dashboard(...) 
-    # But we just closed the Qt app, so we might not want to pop up another window immediately.
-    # Let's just save it.
+                                           
+                                                               
+                                     
+                                                                                               
+                         
     id_propagator = SatellitePropagator(identified_sat)
     Visualizer.plot_results(timestamps, measured_freqs, est_lat, est_lon, 19.0760, 72.8777, id_propagator, TX_FREQUENCY)
 

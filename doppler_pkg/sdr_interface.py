@@ -31,7 +31,7 @@ class SDRInterface:
         Capture IQ samples for a specified duration.
         """
         num_samples = int(self.sdr.sample_rate * duration_sec)
-        # Read samples (this is blocking)
+                                         
         samples = self.sdr.read_samples(num_samples)
         return samples
 
@@ -40,15 +40,15 @@ class SDRInterface:
         Estimate the carrier frequency from IQ samples using FFT.
         Returns (peak_freq, fft_magnitude_array)
         """
-        # Use a window function to reduce spectral leakage
+                                                          
         window = np.hamming(len(samples))
         samples_windowed = samples * window
         
-        # Compute FFT
+                     
         fft_result = np.fft.fft(samples_windowed)
         fft_freqs = np.fft.fftfreq(len(samples), d=1/self.sample_rate)
         
-        # Find peak
+                   
         fft_result_shifted = np.fft.fftshift(fft_result)
         fft_freqs_shifted = np.fft.fftshift(fft_freqs)
         
@@ -78,24 +78,24 @@ class MockSDR:
         num_samples = int(self.sample_rate * duration_sec)
         t = np.arange(num_samples) / self.sample_rate
         
-        # Simulate a simple Doppler curve: f(t) = f0 + max_doppler * cos(...)
-        # Just a linear drift for testing: starts at +3kHz, drifts to -3kHz over 10 mins
+                                                                             
+                                                                                        
         elapsed = time.time() - self.start_time
-        # 10 minute pass (600s)
+                               
         progress = elapsed / 600.0 
-        doppler_shift = 3000 * (1 - 2 * progress) # +3k to -3k
+        doppler_shift = 3000 * (1 - 2 * progress)             
         
-        # Generate signal
-        # exp(j * 2 * pi * f * t)
+                         
+                                 
         signal = np.exp(1j * 2 * np.pi * doppler_shift * t)
         
-        # Add noise
+                   
         noise = (np.random.randn(num_samples) + 1j * np.random.randn(num_samples)) * 0.5
         
         return signal + noise
 
     def measure_frequency(self, samples):
-        # Same logic as real SDR
+                                
         window = np.hamming(len(samples))
         samples_windowed = samples * window
         fft_result = np.fft.fft(samples_windowed)

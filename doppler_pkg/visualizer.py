@@ -22,27 +22,27 @@ class Visualizer:
         fig = plt.figure(figsize=(16, 10))
         gs = fig.add_gridspec(2, 2)
         
-        # --- 1. Waterfall Plot ---
-        ax1 = fig.add_subplot(gs[0, :]) # Top row spanning both columns
+                                   
+        ax1 = fig.add_subplot(gs[0, :])                                
         
         if spectrogram_data is not None and len(spectrogram_data) > 0:
-            # spectrogram_data is list of 1D arrays (FFT magnitudes)
-            # Convert to 2D array: Time x Frequency
+                                                                    
+                                                   
             spec_matrix = np.array(spectrogram_data)
             
-            # Create frequency axis (centered)
+                                              
             num_bins = spec_matrix.shape[1]
             freqs = np.fft.fftshift(np.fft.fftfreq(num_bins, d=1/sample_rate))
             
-            # Create time axis
-            # We assume uniform sampling for the plot roughly
+                              
+                                                             
             duration = (timestamps[-1] - timestamps[0]).total_seconds() if len(timestamps) > 1 else 1
-            extent = [freqs[0]/1000, freqs[-1]/1000, duration, 0] # kHz vs Seconds
+            extent = [freqs[0]/1000, freqs[-1]/1000, duration, 0]                 
             
-            # Shift zero freq to center
+                                       
             spec_matrix_shifted = np.fft.fftshift(spec_matrix, axes=1)
             
-            # Log scale for better visibility
+                                             
             spec_db = 10 * np.log10(np.abs(spec_matrix_shifted) + 1e-9)
             
             im = ax1.imshow(spec_db, aspect='auto', extent=extent, cmap='inferno')
@@ -53,7 +53,7 @@ class Visualizer:
         else:
             ax1.text(0.5, 0.5, "No Spectrogram Data", ha='center', va='center')
 
-        # --- 2. Doppler Curve ---
+                                  
         ax2 = fig.add_subplot(gs[1, 0])
         ax2.scatter(timestamps, measured_freqs, s=10, label='Measured', color='blue', alpha=0.5)
         
@@ -71,7 +71,7 @@ class Visualizer:
         ax2.legend()
         ax2.grid(True)
 
-        # --- 3. Map ---
+                        
         ax3 = fig.add_subplot(gs[1, 1])
         ax3.scatter(true_lon, true_lat, color='green', marker='*', s=200, label='True')
         ax3.scatter(solved_lon, solved_lat, color='red', marker='x', s=100, label='Est')
@@ -90,8 +90,8 @@ class Visualizer:
         
     @staticmethod
     def plot_results(timestamps, measured_freqs, solved_lat, solved_lon, true_lat, true_lon, propagator, tx_freq):
-        # Keep legacy method wrapper or just redirect
-        # For now, we'll just keep it but the main script will call plot_dashboard
+                                                     
+                                                                                  
         pass
 
 class LiveVisualizer:
@@ -105,19 +105,19 @@ class LiveVisualizer:
         
         self.timestamps = []
         self.measured_freqs = []
-        self.spectrogram_data = [] # List of 1D arrays
+        self.spectrogram_data = []                    
         
-        plt.ion() # Enable interactive mode
+        plt.ion()                          
         self.fig = plt.figure(figsize=(12, 8))
         gs = self.fig.add_gridspec(2, 1, height_ratios=[2, 1])
         
-        # Waterfall
+                   
         self.ax_waterfall = self.fig.add_subplot(gs[0])
         self.ax_waterfall.set_title(f"Real-Time Waterfall ({center_freq/1e6} MHz)")
         self.ax_waterfall.set_ylabel("Time (latest at bottom)")
         self.ax_waterfall.set_xlabel("Frequency Offset (kHz)")
         
-        # Frequency Plot
+                        
         self.ax_freq = self.fig.add_subplot(gs[1])
         self.ax_freq.set_title("Measured Frequency")
         self.ax_freq.set_ylabel("Frequency (Hz)")
@@ -126,7 +126,7 @@ class LiveVisualizer:
         
         self.line_freq, = self.ax_freq.plot([], [], 'b.-')
         
-        # Placeholder for image
+                               
         self.im = None
         
         plt.show()
@@ -137,14 +137,14 @@ class LiveVisualizer:
         self.measured_freqs.append(measured_freq)
         self.spectrogram_data.append(spectrum_chunk)
         
-        # Keep history limited
+                              
         if len(self.timestamps) > self.history_size:
             self.timestamps.pop(0)
             self.measured_freqs.pop(0)
             self.spectrogram_data.pop(0)
             
-        # Update Frequency Plot
-        # Use relative time for x-axis
+                               
+                                      
         t0 = self.timestamps[0]
         rel_times = [(t - t0).total_seconds() for t in self.timestamps]
         
@@ -152,10 +152,10 @@ class LiveVisualizer:
         self.ax_freq.relim()
         self.ax_freq.autoscale_view()
         
-        # Update Waterfall
+                          
         if len(self.spectrogram_data) > 0:
             spec_matrix = np.array(self.spectrogram_data)
-            # Log scale
+                       
             spec_db = 10 * np.log10(np.abs(spec_matrix) + 1e-9)
             
             num_bins = spec_matrix.shape[1]

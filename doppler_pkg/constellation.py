@@ -4,13 +4,13 @@ from typing import List, Tuple
 
 @dataclass
 class KeplerianElements:
-    a: float  # Semi-major axis (m)
-    e: float  # Eccentricity
-    i: float  # Inclination (rad)
-    omega: float  # Argument of perigee (rad)
-    RAAN: float  # Right Ascension of Ascending Node (rad)
-    M: float  # Mean Anomaly (rad)
-    sat_id: int # Unique ID
+    a: float                       
+    e: float                
+    i: float                     
+    omega: float                             
+    RAAN: float                                           
+    M: float                      
+    sat_id: int            
 
 class WalkerConstellation:
     """
@@ -24,7 +24,7 @@ class WalkerConstellation:
         self.inclination = np.radians(inclination_deg)
         
         self.sats_per_plane = self.T // self.P
-        self.RE = 6378137.0  # Earth Radius (m)
+        self.RE = 6378137.0                    
         self.a = self.RE + self.altitude
 
     def generate_elements(self, start_id: int = 0) -> List[KeplerianElements]:
@@ -32,33 +32,33 @@ class WalkerConstellation:
         id_counter = start_id
         
         for p in range(self.P):
-            # RAAN for this plane
+                                 
             raan = (2 * np.pi * p) / self.P
             
             for s in range(self.sats_per_plane):
-                # Mean Anomaly for this satellite
-                # Phasing factor F determines the relative phasing between planes
-                # Delta M = 2*pi * (p * F / P)
+                                                 
+                                                                                 
+                                              
                 
-                # Position in plane
+                                   
                 m_in_plane = (2 * np.pi * s) / self.sats_per_plane
                 
-                # Phasing offset
-                m_offset = (2 * np.pi * p * self.F) / (self.T) # Walker Delta phasing formula: 2*pi * (P * F / T) ? No, usually 2*pi * F/P is the shift between adjacent planes.
-                # Standard Walker notation i: T/P/F
-                # RAAN(p) = 2pi * p / P
-                # M(p, s) = 2pi * s / S + 2pi * F * p / T
+                                
+                m_offset = (2 * np.pi * p * self.F) / (self.T)                                                                                                                  
+                                                   
+                                       
+                                                         
                 
                 m = m_in_plane + (2 * np.pi * self.F * p) / self.T
                 
-                # Normalize M
+                             
                 m = m % (2 * np.pi)
                 
                 elem = KeplerianElements(
                     a=self.a,
-                    e=0.001, # Near circular
+                    e=0.001,                
                     i=self.inclination,
-                    omega=0.0, # Argument of perigee
+                    omega=0.0,                      
                     RAAN=raan,
                     M=m,
                     sat_id=id_counter
@@ -77,9 +77,9 @@ class LEOS9Constellation:
     """
     def __init__(self):
         self.shells = [
-            # (Total, Planes, Phasing, Alt, Inc)
-            # 147 sats, 7 planes (21 per plane), F=1 ?
-            # Let's assume a standard configuration for high coverage
+                                                
+                                                      
+                                                                     
             {"T": 147, "P": 7, "F": 1, "alt": 800000, "inc": 85},
             {"T": 147, "P": 7, "F": 1, "alt": 800000, "inc": 55},
             {"T": 147, "P": 7, "F": 1, "alt": 800000, "inc": 25},

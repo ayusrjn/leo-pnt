@@ -6,8 +6,8 @@ from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import QThread, pyqtSignal
 from doppler_pkg.qt_visualizer import DashboardWindow
 
-# CONFIGURATION
-# IP of the Compute Node (Pi 1). Use 'localhost' for testing on same machine.
+               
+                                                                             
 COMPUTE_NODE_IP = "localhost" 
 ZMQ_PORT = 5555
 
@@ -15,10 +15,10 @@ class ZMQSubscriberThread(QThread):
     """
     Background thread to receive data from Compute Node via ZMQ.
     """
-    data_ready = pyqtSignal(object, float, object) # timestamp, freq, spectrum
+    data_ready = pyqtSignal(object, float, object)                            
     log_ready = pyqtSignal(str)
-    pos_ready = pyqtSignal(float, float, float, float) # lat, lon, true_lat, true_lon
-    doppler_ready = pyqtSignal(object) # list of dicts
+    pos_ready = pyqtSignal(float, float, float, float)                               
+    doppler_ready = pyqtSignal(object)                
     
     def __init__(self, ip, port):
         super().__init__()
@@ -31,15 +31,15 @@ class ZMQSubscriberThread(QThread):
         context = zmq.Context()
         socket = context.socket(zmq.SUB)
         socket.connect(f"tcp://{self.ip}:{self.port}")
-        socket.setsockopt_string(zmq.SUBSCRIBE, "") # Subscribe to all topics
+        socket.setsockopt_string(zmq.SUBSCRIBE, "")                          
         
         while self.running:
             try:
-                # Receive
+                         
                 data = socket.recv()
                 payload = pickle.loads(data)
                 
-                # Extract
+                         
                 msg_type = payload.get('type', 'spectrum')
                 
                 if msg_type == 'spectrum':
@@ -76,9 +76,9 @@ def main():
     
     app = QApplication(sys.argv)
     
-    # We need initial params to setup window. 
-    # Ideally we wait for first packet, or just use defaults.
-    # Let's use defaults and update later if needed.
+                                              
+                                                             
+                                                    
     default_center_freq = 137.5e6
     default_sample_rate = 2.048e6
     
@@ -86,7 +86,7 @@ def main():
     window.setWindowTitle(f"Display Node - Connected to {COMPUTE_NODE_IP}")
     window.show()
     
-    # Setup Subscriber
+                      
     subscriber = ZMQSubscriberThread(COMPUTE_NODE_IP, ZMQ_PORT)
     subscriber.data_ready.connect(window.update_data)
     subscriber.log_ready.connect(window.update_log)

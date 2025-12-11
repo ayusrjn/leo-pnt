@@ -1,9 +1,9 @@
-# doppler_pkg/utils.py
+                      
 import numpy as np
 
 def haversine_distance(lat1, lon1, lat2, lon2):
     """Calculate distance between two points on Earth in km."""
-    R = 6371.0  # Earth radius in km
+    R = 6371.0                      
     
     dlat = np.radians(lat2 - lat1)
     dlon = np.radians(lon2 - lon1)

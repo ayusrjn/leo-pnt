@@ -1,4 +1,4 @@
-# doppler_pkg/simulator.py
+                          
 import datetime
 import numpy as np
 from skyfield.api import load
@@ -30,12 +30,12 @@ class SignalSimulator:
             curr_time_dt = start_time + datetime.timedelta(seconds=i)
             t = ts.from_datetime(curr_time_dt)
             
-            # Calculate theoretical frequency
-            # f_obs = f_tx * (1 - v_rel / c)
+                                             
+                                            
             v_rel = self.propagator.calculate_range_rate(t, true_lat, true_lon)
             f_theoretical = self.tx_freq * (1 - v_rel / C)
             
-            # Add noise
+                       
             noise = np.random.normal(0, noise_std)
             f_measured = f_theoretical + noise
             

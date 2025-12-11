@@ -1,0 +1,44 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+
+System_Ext(sdr_hardware, "RTL-SDR Hardware", "Receives satellite signals")
+
+System_Boundary(c1, "Doppler Geolocation System") {
+    Component(gui, "GUI (PyQt5)", "python", "Provides real-time visualization and control")
+    Component(sdr_interface, "SDR Interface", "python", "Hardware abstraction for RTL-SDR")
+    Component(solver, "Geolocation Solver", "python", "Calculates user position from Doppler shift")
+    Component(selector, "Satellite Selector", "python", "Identifies the correct satellite from a blind search")
+    Component(zmq, "ZeroMQ", "networking", "Message queue for distributed system")
+
+    System_Boundary(c2, "Monolithic Application (`main.py`)") {
+        Component(main_app, "Main Application", "python", "Single-process GUI application")
+        Component(worker, "SDR Worker", "python", "Captures and processes SDR data in a background thread")
+        Rel(main_app, worker, "Manages")
+        Rel(worker, sdr_interface, "Uses")
+        Rel(main_app, solver, "Uses")
+        Rel(main_app, selector, "Uses")
+        Rel(main_app, gui, "Uses")
+    }
+
+    System_Boundary(c3, "Distributed System") {
+        Component(compute_node, "Compute Node (`compute_node.py`)", "python", "Connects to SDR, processes FFT, and publishes data")
+        Component(display_node, "Display Node (`display_node.py`)", "python", "Subscribes to data and visualizes it")
+        Rel(compute_node, sdr_interface, "Uses")
+        Rel(compute_node, zmq, "Publishes to")
+        Rel(display_node, zmq, "Subscribes to")
+        Rel(display_node, gui, "Uses")
+    }
+
+    System_Boundary(c4, "Algorithmic Testbed (`doppler_geolocation.py`)") {
+        Component(testbed, "Testbed Script", "python", "Simulates satellite pass and validates algorithms")
+        Component(signal_sim, "Signal Simulator", "python", "Generates synthetic Doppler data")
+        Rel(testbed, signal_sim, "Uses")
+        Rel(testbed, solver, "Uses")
+    }
+}
+
+Rel(sdr_interface, sdr_hardware, "Controls")
+
+@enduml

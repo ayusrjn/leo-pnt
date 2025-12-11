@@ -1,4 +1,4 @@
-# doppler_pkg/selector.py
+                         
 import numpy as np
 from .solver import GeolocationSolver
 from .propagator import SatellitePropagator
@@ -36,10 +36,10 @@ class SatelliteSelector:
                 propagator = SatellitePropagator(sat)
                 solver = GeolocationSolver(propagator)
                 
-                # Solve and get cost
+                                    
                 lat, lon, cost = solver.solve(timestamps, measured_freqs)
                 
-                # print(f"[{i+1}/{len(candidates)}] {sat.name}: Cost={cost:.2f}, Loc=({lat:.2f}, {lon:.2f})")
+                                                                                                             
                 
                 if cost < min_cost:
                     min_cost = cost
@@ -47,8 +47,8 @@ class SatelliteSelector:
                     best_location = (lat, lon)
                     
             except Exception as e:
-                # Satellite might be below horizon or other math error
-                # print(f"[{i+1}/{len(candidates)}] {sat.name}: Failed ({e})")
+                                                                      
+                                                                              
                 continue
                 
         return best_sat, best_location, min_cost
