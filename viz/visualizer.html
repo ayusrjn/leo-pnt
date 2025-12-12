@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>LEO-PNT Visualizer</title>
+    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/globe.gl@2.32.0/dist/globe.gl.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Rajdhani', sans-serif;
+            color: #0ff;
+        }
+
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            background: rgba(0, 10, 20, 0.8);
+            border: 1px solid #0ff;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+        }
+
+        h1 {
+            margin: 0 0 10px;
+            font-size: 24px;
+            letter-spacing: 2px;
+            text-shadow: 0 0 5px #0ff;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        .label {
+            color: #888;
+            margin-right: 15px;
+        }
+
+        .value {
+            color: #fff;
+            font-weight: bold;
+        }
+
+        #locking-reticle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60px;
+            height: 60px;
+            border: 2px solid #f00;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #f00;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+
+        #locking-reticle.active {
+            opacity: 1;
+            border-color: #0f0;
+            box-shadow: 0 0 10px #0f0;
+        }
+
+        #sat-details {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 300px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid #0ff;
+            padding: 15px;
+            transform: translateX(120%);
+            transition: transform 0.3s;
+        }
+
+        #sat-details.visible {
+            transform: translateX(0);
+        }
+
+        .graph-container {
+            width: 100%;
+            height: 100px;
+            background: #001;
+            margin-top: 10px;
+            border: 1px solid #333;
+            position: relative;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="globeViz"></div>
+
+    <div id="hud">
+        <h1>LEO-PNT SYSTEM <span style="font-size:12px; color:#888">v3.0</span></h1>
+        <div class="info-row"><span class="label">STATUS</span><span class="value" id="system-status"
+                style="color:#0f0">TRACKING</span>
+        </div>
+        <div class="info-row"><span class="label">SATELLITES</span><span class="value" id="sat-count">--</span></div>
+        <div class="info-row"><span class="label">USER POS</span><span class="value">19.07°N, 72.87°E</span></div>
+
+        <div style="margin-top: 15px; border-top: 1px solid #333; padding-top: 10px;">
+            <div class="label" style="margin-bottom: 5px; font-size: 12px; letter-spacing: 1px;">LOCKED CHANNELS</div>
+            <div id="channel-grid"
+                style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; font-size: 11px; font-family: 'Courier New', monospace;">
+                <!-- IDs injected here -->
+            </div>
+        </div>
+    </div>
+
+    <div id="locking-reticle"></div>
+
+    <div id="sat-details">
+        <h2 style="margin:0 0 10px; color:#0ff; border-bottom:1px solid #0ff">TARGET LOCKED</h2>
+        <div class="info-row"><span class="label">ID</span><span class="value" id="d-id">--</span></div>
+        <div class="info-row"><span class="label">ALTITUDE</span><span class="value" id="d-alt">--</span></div>
+        <div class="info-row"><span class="label">RANGE</span><span class="value" id="d-range">--</span></div>
+        <div class="info-row"><span class="label">DOPPLER</span><span class="value" id="d-doppler">--</span></div>
+        <div class="graph-container">
+            <canvas id="doppler-canvas"></canvas>
+        </div>
+    </div>
+
+    <div id="error-panel"
+        style="position: absolute; top: 20px; right: 20px; width: 300px; background: rgba(0, 10, 20, 0.9); border: 1px solid #ff0000; padding: 15px; border-radius: 5px; pointer-events: none;">
+        <h2 style="margin: 0 0 10px; color: #ff0000; font-size: 18px; border-bottom: 1px solid #ff0000;">ERROR ANALYSIS
+        </h2>
+
+        <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px;">
+            <span style="color: #888;">TOTAL RESIDUAL</span>
+            <span id="total-error" style="color: #ff0000; font-weight: bold;">-- m</span>
+        </div>
+
+        <div style="height: 100px; background: #000; border: 1px solid #333; margin-bottom: 10px; position: relative;">
+            <canvas id="error-canvas"></canvas>
+        </div>
+
+        <table style="width: 100%; font-size: 11px; color: #aaa; border-collapse: collapse;">
+            <tr>
+                <td>IONOSPHERE</td>
+                <td id="err-iono" style="text-align: right; color: #0ff;">-- m</td>
+            </tr>
+            <tr>
+                <td>TROPOSPHERE</td>
+                <td id="err-tropo" style="text-align: right; color: #0ff;">-- m</td>
+            </tr>
+            <tr>
+                <td>CLOCK BIAS</td>
+                <td id="err-clock" style="text-align: right; color: #ff00ff;">-- m</td>
+            </tr>
+            <tr>
+                <td>THERMAL NOISE</td>
+                <td id="err-thermal" style="text-align: right; color: #ffff00;">-- m</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- Load Data -->
+    <script src="data.js"></script>
+
+    <div id="location-panel"
+        style="position: absolute; bottom: 20px; right: 20px; top: auto; left: auto; width: 250px; background: rgba(0, 10, 20, 0.9); border: 1px solid #00ff00; padding: 15px; border-radius: 5px; pointer-events: auto;">
+        <h2 style="margin: 0 0 10px; color: #00ff00; font-size: 16px; border-bottom: 1px solid #00ff00;">DEPLOY RECEIVER
+        </h2>
+        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+            <div>
+                <div class="label" style="font-size: 10px;">LATITUDE</div>
+                <input type="number" id="inp-lat" value="19.0760" step="0.0001"
+                    style="width: 100px; background: #000; color: #fff; border: 1px solid #333;">
+            </div>
+            <div>
+                <div class="label" style="font-size: 10px;">LONGITUDE</div>
+                <input type="number" id="inp-lon" value="72.8777" step="0.0001"
+                    style="width: 100px; background: #000; color: #fff; border: 1px solid #333;">
+            </div>
+        </div>
+        <button onclick="deployReceiver()"
+            style="width: 100%; background: #003300; color: #0f0; border: 1px solid #0f0; cursor: pointer; padding: 5px; font-family: 'Rajdhani', sans-serif; font-weight: bold;">DEPLOY
+            HERE</button>
+    </div>
+
+    <!-- Load Data -->
+    <script src="data.js"></script>
+
+    <script>
+        // --- CONFIG ---
+        let USER_LAT = 19.0760;
+        let USER_LON = 72.8777;
+        const SAT_SIZE = 3.0; // Much bigger for visibility
+        const SAT_ALT_SCALE = 10.0;
+        const C = 299792458; // Speed of light
+        const FREQ = 11.325e9; // 11.325 GHz (Ku-band approx)
+
+        // --- PHYSICS ENGINE ---
+        const Physics = {
+            // WGS84 Constants
+            a: 6378137.0,
+            f: 1 / 298.257223563,
+
+            llaToEcef: function (lat, lon, altKm) {
+                const latRad = lat * Math.PI / 180;
+                const lonRad = lon * Math.PI / 180;
+                const h = altKm * 1000; // meters
+
+                const e2 = 2 * this.f - this.f * this.f;
+                const N = this.a / Math.sqrt(1 - e2 * Math.sin(latRad) * Math.sin(latRad));
+
+                const x = (N + h) * Math.cos(latRad) * Math.cos(lonRad);
+                const y = (N + h) * Math.cos(latRad) * Math.sin(lonRad);
+                const z = (N * (1 - e2) + h) * Math.sin(latRad);
+
+                return { x, y, z };
+            },
+
+            ecefToEnu: function (x, y, z, refLat, refLon) {
+                const latRad = refLat * Math.PI / 180;
+                const lonRad = refLon * Math.PI / 180;
+
+                // Rotate ECEF vector to ENU frame
+                // This is a standard transformation matrix application
+                const sinLat = Math.sin(latRad);
+                const cosLat = Math.cos(latRad);
+                const sinLon = Math.sin(lonRad);
+                const cosLon = Math.cos(lonRad);
+
+                const e = -sinLon * x + cosLon * y;
+                const n = -sinLat * cosLon * x - sinLat * sinLon * y + cosLat * z;
+                const u = cosLat * cosLon * x + cosLat * sinLon * y + sinLat * z;
+
+                return { e, n, u }; // East, North, Up
+            },
+
+            calculateLookAngles: function (satEcef, userEcef, userLat, userLon) {
+                const dx = satEcef.x - userEcef.x;
+                const dy = satEcef.y - userEcef.y;
+                const dz = satEcef.z - userEcef.z;
+
+                const enu = this.ecefToEnu(dx, dy, dz, userLat, userLon);
+                const range = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+                const el = Math.asin(enu.u / range) * 180 / Math.PI;
+                const az = Math.atan2(enu.e, enu.n) * 180 / Math.PI; // 0 is North, 90 East
+
+                return { az: (az + 360) % 360, el, range };
+            },
+
+            calculateDoppler: function (satPos, satVel, userPos) {
+                // Relative position vector
+                const rx = satPos.x - userPos.x;
+                const ry = satPos.y - userPos.y;
+                const rz = satPos.z - userPos.z;
+                const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
+
+                // Line of Sight unit vector
+                const ux = rx / dist;
+                const uy = ry / dist;
+                const uz = rz / dist;
+
+                // Relative velocity (assuming user is static in ECEF - ignoring earth rotation for simplicity or adding it?)
+                // For simplicity, let's assume user is static ECEF (Earth rotates with them).
+                // Doppler = - (v_sat dot u_los) / C * F
+
+                const v_dot_u = satVel.x * ux + satVel.y * uy + satVel.z * uz;
+                return - (v_dot_u / C) * FREQ;
+            }
+        };
+
+        // --- STATE ---
+        let timeStep = 0;
+        const maxTimeStep = SATELLITE_DATA[0].path.length - 1;
+        let lockedSat = null;
+
+        // Start Est Pos FAR away (e.g., 500km error) to show convergence clearly
+        let estPos = { lat: USER_LAT + 2.0, lng: USER_LON + 2.0, alt: 0 };
+        let userEcef = Physics.llaToEcef(USER_LAT, USER_LON, 0);
+
+        // Story Mode State
+        let sequenceTime = 0; // Seconds since start
+        let lockedSatellitesList = []; // Keep track of who we locked
+
+        // Error Simulation State
+        let errorState = {
+            iono: 12.5, // meters
+            tropo: 3.2, // meters
+            clock: 50.0, // meters
+            thermal: 0.0, // meters (jitter)
+            history: [] // For graph
+        };
+
+        document.getElementById('sat-count').innerText = SATELLITE_DATA.length;
+
+        // --- UI ELEMENTS ---
+        // Add Log Panel
+        const logPanel = document.createElement('div');
+        logPanel.style.cssText = `
+            position: absolute; bottom: 20px; left: 20px; width: 300px; height: 200px;
+            background: rgba(0, 10, 20, 0.9); border: 1px solid #0ff; padding: 10px;
+            font-family: 'Courier New', monospace; font-size: 12px; color: #0f0;
+            overflow-y: auto; pointer-events: none; z-index: 1000;
+        `;
+        document.body.appendChild(logPanel);
+
+        function log(msg) {
+            const line = document.createElement('div');
+            line.innerText = `> ${msg}`;
+            logPanel.appendChild(line);
+            logPanel.scrollTop = logPanel.scrollHeight;
+            if (logPanel.children.length > 20) logPanel.removeChild(logPanel.children[0]);
+        }
+
+        log("BOOT SEQUENCE INITIATED...");
+        setTimeout(() => log("Loading Ephemeris Data..."), 1000);
+        setTimeout(() => log("Calibrating Oscillator..."), 2000);
+
+        // --- GLOBE SETUP ---
+        const world = Globe()
+            (document.getElementById('globeViz'))
+            .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+            .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
+            .backgroundImageUrl('//unpkg.com/three-globe/example/img/night-sky.png')
+            .pointOfView({ lat: USER_LAT, lng: USER_LON, altitude: 1.8 })
+            .atmosphereColor('#3a228a')
+            .atmosphereAltitude(0.25);
+
+        // --- OBJECTS ---
+        // 1. User Location Marker (True)
+        const userLocation = [{ lat: USER_LAT, lng: USER_LON, size: 0.5, color: 'red', label: "TRUE POS" }];
+
+        // 2. Estimated Position Marker (Ghost)
+        const estLocation = [{ lat: estPos.lat, lng: estPos.lng, size: 0.5, color: 'yellow', label: "EST POS" }];
+
+        world.labelsData([...userLocation, ...estLocation])
+            .labelLat('lat')
+            .labelLng('lng')
+            .labelText('label')
+            .labelSize(1.5)
+            .labelDotRadius(0.5)
+            .labelColor('color')
+            .labelResolution(2);
+
+        // 3. Satellites
+        const satObjects = SATELLITE_DATA.map(s => ({
+            id: s.id,
+            lat: s.path[0].lat,
+            lng: s.path[0].lng,
+            alt: s.path[0].alt * SAT_ALT_SCALE,
+            path: s.path,
+            status: 'scanning', // scanning, detecting, measuring, matching, locked
+            stateTimer: 0, // Timer for sub-states
+            // Dynamic Data Cache
+            dyn: { az: 0, el: 0, range: 0, doppler: 0, visible: false }
+        }));
+
+        // FALLBACK: Points Layer
+        world.pointsData(satObjects)
+            .pointLat('lat')
+            .pointLng('lng')
+            .pointAltitude('alt')
+            .pointRadius(0.5)
+            .pointColor(d => {
+                if (d.status === 'locked') return '#00ff00'; // Green
+                if (d.status === 'matching') return '#0088ff'; // Blue
+                if (d.status === 'measuring') return '#ff8800'; // Orange
+                if (d.status === 'detecting') return '#ffff00'; // Yellow
+                return '#00ffff'; // Cyan
+            });
+
+        // 4. Custom 3D Objects (Cones)
+        world.customLayerData(satObjects)
+            .customThreeObject(d => {
+                const group = new THREE.Group();
+                const geometry = new THREE.ConeGeometry(SAT_SIZE, SAT_SIZE * 3, 8);
+                const material = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.rotation.x = Math.PI / 2;
+                mesh.name = "satMesh";
+                group.add(mesh);
+                return group;
+            })
+            .customThreeObjectUpdate((obj, d) => {
+                const point = d.path[timeStep];
+                const coords = world.getCoords(point.lat, point.lng, point.alt * SAT_ALT_SCALE);
+                Object.assign(obj.position, coords);
+                obj.lookAt(world.getCoords(0, 0, 0));
+
+                const mesh = obj.children.find(c => c.name === "satMesh");
+                if (mesh) {
+                    let color = 0x00ffff;
+                    if (d.status === 'locked') color = 0x00ff00;
+                    else if (d.status === 'matching') color = 0x0088ff;
+                    else if (d.status === 'measuring') color = 0xff8800;
+                    else if (d.status === 'detecting') color = 0xffff00;
+
+                    mesh.material.color.setHex(color);
+                }
+            });
+
+        // 5. Ranging Lines
+        function updateRangingLines() {
+            const lockedSats = satObjects.filter(s => s.status === 'locked');
+
+            // Lines to Estimated Position
+            const arcs = lockedSats.map(s => ({
+                startLat: s.lat,
+                startLng: s.lng,
+                startAlt: s.alt,
+                endLat: estPos.lat, // Draw to estimated pos
+                endLng: estPos.lng,
+                endAlt: 0,
+                color: '#00ff00'
+            }));
+
+            world.arcsData(arcs)
+                .arcColor('color')
+                .arcDashLength(0.5)
+                .arcDashGap(0.1)
+                .arcDashAnimateTime(1000)
+                .arcStroke(0.5);
+
+            // Update HUD
+            const countEl = document.getElementById('sat-count');
+            if (countEl) countEl.innerText = `${lockedSats.length} / ${satObjects.length}`;
+
+            const statusEl = document.getElementById('system-status');
+            if (statusEl) {
+                if (lockedSats.length >= 4) {
+                    statusEl.innerText = "LOCKED (3D FIX)";
+                    statusEl.style.color = "#0f0";
+                } else {
+                    statusEl.innerText = "ACQUIRING...";
+                    statusEl.style.color = "#ff0";
+                }
+            }
+
+            // Update Locked Channels List
+            const grid = document.getElementById('channel-grid');
+            if (grid) {
+                grid.innerHTML = '';
+                lockedSats.forEach(s => {
+                    const el = document.createElement('div');
+                    el.innerText = `[${s.id}]`;
+                    el.style.color = '#0f0';
+                    grid.appendChild(el);
+                });
+            }
+        }
+
+        // Add lights
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+        world.scene().add(ambientLight);
+
+        // --- INTERACTION ---
+        world.objectsData(satObjects)
+            .objectLat('lat')
+            .objectLng('lng')
+            .objectAltitude('alt')
+            .objectThreeObject(() => new THREE.Mesh(
+                new THREE.SphereGeometry(SAT_SIZE * 2, 16, 16),
+                new THREE.MeshBasicMaterial({ color: 'red', transparent: true, opacity: 0.0 })
+            ))
+            .onObjectClick(sat => lockSatellite(sat));
+
+        // --- DEPLOY LOGIC ---
+        function deployReceiver() {
+            const lat = parseFloat(document.getElementById('inp-lat').value);
+            const lon = parseFloat(document.getElementById('inp-lon').value);
+
+            USER_LAT = lat;
+            USER_LON = lon;
+            userEcef = Physics.llaToEcef(USER_LAT, USER_LON, 0);
+
+            // Reset State
+            estPos = { lat: USER_LAT + 2.0, lng: USER_LON + 2.0, alt: 0 };
+            sequenceTime = 0;
+            satObjects.forEach(s => {
+                s.status = 'scanning';
+                s.stateTimer = 0;
+            });
+
+            // Move Camera
+            world.pointOfView({ lat: USER_LAT, lng: USER_LON, altitude: 1.8 }, 1000);
+
+            // Update Markers
+            userLocation[0].lat = USER_LAT;
+            userLocation[0].lng = USER_LON;
+
+            log("--------------------------------");
+            log(`RE-DEPLOYING TO ${USER_LAT.toFixed(4)}, ${USER_LON.toFixed(4)}`);
+            log("SYSTEM REBOOT...");
+        }
+
+        // --- ANIMATION LOOP ---
+        let lastTime = Date.now();
+        let simTime = 0; // Float simulation time
+        const SIM_SPEED = 1.0; // 1.0 = 1 sec data per 1 sec real time (Real-time). Set to 10.0 for fast forward.
+        // User requested "move", so let's make it visible. 10x speed is good.
+        const PLAYBACK_SPEED = 5.0;
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const now = Date.now();
+            const dt = (now - lastTime) / 1000.0; // seconds
+            lastTime = now;
+
+            simTime += dt * PLAYBACK_SPEED;
+            sequenceTime += dt;
+
+            // Calculate Time Step and Fraction
+            const totalSteps = SATELLITE_DATA[0].path.length;
+            const floatStep = simTime % (totalSteps - 1);
+            timeStep = Math.floor(floatStep);
+            const frac = floatStep - timeStep;
+            const nextStep = (timeStep + 1) % totalSteps;
+
+            // 1. Interpolate Positions
+            let visibleSats = [];
+
+            satObjects.forEach(sat => {
+                const p1 = sat.path[timeStep];
+                const p2 = sat.path[nextStep];
+
+                if (!p1 || !p2) return;
+
+                // LERP
+                sat.lat = p1.lat + (p2.lat - p1.lat) * frac;
+                sat.lng = p1.lng + (p2.lng - p1.lng) * frac;
+
+                // Handle wrap-around for longitude (e.g. 179 -> -179)
+                if (Math.abs(p2.lng - p1.lng) > 180) {
+                    if (p2.lng > p1.lng) sat.lng = p1.lng + (p2.lng - 360 - p1.lng) * frac;
+                    else sat.lng = p1.lng + (p2.lng + 360 - p1.lng) * frac;
+                }
+
+                sat.alt = (p1.alt + (p2.alt - p1.alt) * frac) * SAT_ALT_SCALE;
+                const realAlt = p1.real_alt_km + (p2.real_alt_km - p1.real_alt_km) * frac;
+
+                // --- DYNAMIC PHYSICS (Recalculate on interpolated pos) ---
+                const satEcef = Physics.llaToEcef(sat.lat, sat.lng, realAlt);
+                const look = Physics.calculateLookAngles(satEcef, userEcef, USER_LAT, USER_LON);
+
+                // Velocity (from pre-calc points is fine for doppler approx)
+                const ecef_next = Physics.llaToEcef(p2.lat, p2.lng, p2.real_alt_km);
+                const ecef_curr = Physics.llaToEcef(p1.lat, p1.lng, p1.real_alt_km);
+                const vx = ecef_next.x - ecef_curr.x; // per second (approx)
+                const vy = ecef_next.y - ecef_curr.y;
+                const vz = ecef_next.z - ecef_curr.z;
+
+                const doppler = Physics.calculateDoppler(satEcef, { x: vx, y: vy, z: vz }, userEcef);
+
+                sat.dyn.az = look.az;
+                sat.dyn.el = look.el;
+                sat.dyn.range = look.range;
+                sat.dyn.doppler = doppler;
+                sat.dyn.visible = look.el > 0;
+
+                if (sat.dyn.visible) {
+                    visibleSats.push(sat);
+                } else {
+                    sat.status = 'scanning';
+                    sat.stateTimer = 0;
+                }
+            });
+
+            // 2. Update Globe Layers (Trigger Render)
+            world.pointsData(visibleSats);
+            world.customLayerData(visibleSats);
+
+            // 3. Update Ranging Lines & HUD
+            updateRangingLines();
+            if (lockedSat) updateHud();
+
+            // 4. Update Error/Convergence (Visuals)
+            updateConvergence(dt);
+        }
+
+        // Separate Logic Loop (State Machine) - Run less frequently
+        setInterval(() => {
+            // Filter candidates
+            const candidates = satObjects.filter(s => s.dyn.visible && s.dyn.el > 10.0);
+            candidates.sort((a, b) => b.dyn.el - a.dyn.el);
+            const MAX_CHANNELS = 12;
+
+            candidates.forEach((sat, index) => {
+                if (index < MAX_CHANNELS) {
+                    if (sat.status === 'scanning') {
+                        if (sequenceTime > 2) {
+                            sat.status = 'detecting';
+                            sat.stateTimer = 0;
+                            if (Math.random() < 0.3) log(`Signal Detected: Az ${sat.dyn.az.toFixed(0)}° El ${sat.dyn.el.toFixed(0)}°`);
+                        }
+                    } else if (sat.status === 'detecting') {
+                        sat.stateTimer += 0.2; // 200ms tick
+                        if (sat.stateTimer > 2.0) {
+                            sat.status = 'measuring';
+                            sat.stateTimer = 0;
+                            log(`Sat ${sat.id}: Measuring Doppler...`);
+                        }
+                    } else if (sat.status === 'measuring') {
+                        sat.stateTimer += 0.2;
+                        if (sat.stateTimer > 2.0) {
+                            sat.status = 'matching';
+                            sat.stateTimer = 0;
+                            log(`Sat ${sat.id}: Doppler ${sat.dyn.doppler.toFixed(1)} Hz. Matching TLE...`);
+                        }
+                    } else if (sat.status === 'matching') {
+                        sat.stateTimer += 0.2;
+                        if (sat.stateTimer > 2.0) {
+                            sat.status = 'locked';
+                            log(`Sat ${sat.id}: MATCH CONFIRMED. Locked.`);
+                        }
+                    }
+                } else {
+                    sat.status = 'scanning';
+                    sat.stateTimer = 0;
+                }
+            });
+        }, 200);
+
+        function updateConvergence(dt) {
+            // Phase 3: Convergence with NOISE
+            const lockedCount = satObjects.filter(s => s.status === 'locked').length;
+
+            // Update Noise Models
+            errorState.iono += (Math.random() - 0.5) * 0.1;
+            errorState.tropo += (Math.random() - 0.5) * 0.05;
+            errorState.clock += (Math.random() - 0.5) * 0.5;
+            errorState.thermal = (Math.random() - 0.5) * 4.0;
+
+            const totalErrorMeters = Math.abs(errorState.iono + errorState.tropo + errorState.clock + errorState.thermal);
+            const errorDeg = totalErrorMeters / 111000;
+
+            const targetLat = USER_LAT + errorDeg * Math.sin(sequenceTime);
+            const targetLng = USER_LON + errorDeg * Math.cos(sequenceTime);
+
+            if (lockedCount >= 4) {
+                const lerp = 2.0 * dt; // Frame-rate independent lerp
+                estPos.lat += (targetLat - estPos.lat) * lerp;
+                estPos.lng += (targetLng - estPos.lng) * lerp;
+            } else {
+                estPos.lat += (Math.random() - 0.5) * 0.01;
+                estPos.lng += (Math.random() - 0.5) * 0.01;
+            }
+
+            // Update Error Graph Data
+            const currentDistKm = Math.sqrt(Math.pow(estPos.lat - USER_LAT, 2) + Math.pow(estPos.lng - USER_LON, 2)) * 111;
+            // Only push to history occasionally to save perf
+            if (Math.random() < 0.1) {
+                errorState.history.push(currentDistKm * 1000);
+                if (errorState.history.length > 50) errorState.history.shift();
+                drawErrorGraph();
+            }
+
+            // Update Error UI
+            document.getElementById('total-error').innerText = (currentDistKm * 1000).toFixed(1) + " m";
+            document.getElementById('err-iono').innerText = errorState.iono.toFixed(1) + " m";
+            document.getElementById('err-tropo').innerText = errorState.tropo.toFixed(1) + " m";
+            document.getElementById('err-clock').innerText = errorState.clock.toFixed(1) + " m";
+            document.getElementById('err-thermal').innerText = errorState.thermal.toFixed(1) + " m";
+
+            // Update Markers
+            const newEstLocation = [{
+                lat: estPos.lat,
+                lng: estPos.lng,
+                size: 0.5,
+                color: 'yellow',
+                label: "EST POS"
+            }];
+            world.labelsData([...userLocation, ...newEstLocation]);
+        }
+
+        // Start Animation
+        animate();
+
+        // --- LOCKING LOGIC ---
+        function lockSatellite(sat) {
+            lockedSat = sat;
+            document.getElementById('locking-reticle').classList.add('active');
+            document.getElementById('sat-details').classList.add('visible');
+
+            // Focus camera
+            world.pointOfView({ lat: sat.lat, lng: sat.lng, altitude: sat.alt + 0.5 }, 1000);
+        }
+
+        function updateHud() {
+            if (!lockedSat) return;
+            // Use Dynamic Data
+            const d = lockedSat.dyn;
+            const p = lockedSat.path[timeStep];
+
+            if (!p) return;
+
+            document.getElementById('d-id').innerText = lockedSat.id;
+            if (p.real_alt_km !== undefined) document.getElementById('d-alt').innerText = p.real_alt_km.toFixed(1) + " km";
+            document.getElementById('d-range').innerText = (d.range / 1000).toFixed(1) + " km";
+            document.getElementById('d-doppler').innerText = d.doppler.toFixed(1) + " Hz";
+
+            drawGraph(lockedSat);
+        }
+
+        // --- GRAPHS ---
+        const cvs = document.getElementById('doppler-canvas');
+        const ctx = cvs.getContext('2d');
+
+        function drawGraph(sat) {
+            cvs.width = cvs.clientWidth;
+            cvs.height = cvs.clientHeight;
+            ctx.clearRect(0, 0, cvs.width, cvs.height);
+
+            ctx.strokeStyle = '#0ff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+
+            // Note: History graph will still show pre-calculated doppler from data.js for simplicity
+            // unless we store dynamic history. For now, let's stick to the pre-calc path for the graph shape
+            // as it represents the "expected" curve, or we can just not draw it if it's confusing.
+            // Actually, let's keep drawing the pre-calc path but maybe it won't match the dynamic number exactly if location changed.
+            // To fix this properly, we'd need to re-calc the whole path relative to new user.
+            // For now, let's just show the graph as is (it's a visual aid).
+
+            const history = 50;
+            const start = Math.max(0, timeStep - history);
+            const slice = sat.path.slice(start, timeStep + 1);
+
+            if (slice.length < 2) return;
+
+            const min = Math.min(...slice.map(x => x.doppler));
+            const max = Math.max(...slice.map(x => x.doppler));
+            const range = max - min || 1;
+
+            slice.forEach((p, i) => {
+                const x = (i / (slice.length - 1)) * cvs.width;
+                const y = cvs.height - ((p.doppler - min) / range) * cvs.height;
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+        }
+
+        const errCvs = document.getElementById('error-canvas');
+        const errCtx = errCvs.getContext('2d');
+
+        function drawErrorGraph() {
+            errCvs.width = errCvs.clientWidth;
+            errCvs.height = errCvs.clientHeight;
+            errCtx.clearRect(0, 0, errCvs.width, errCvs.height);
+            errCtx.strokeStyle = '#ff0000';
+            errCtx.lineWidth = 2;
+            errCtx.beginPath();
+
+            const data = errorState.history;
+            if (data.length < 2) return;
+
+            const max = Math.max(...data, 100); // Min scale 100m
+
+            data.forEach((val, i) => {
+                const x = (i / (data.length - 1)) * errCvs.width;
+                const y = errCvs.height - (val / max) * errCvs.height;
+                if (i === 0) errCtx.moveTo(x, y); else errCtx.lineTo(x, y);
+            });
+            errCtx.stroke();
+        }
+    </script>
+</body>
+
+</html>
