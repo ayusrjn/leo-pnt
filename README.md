@@ -39,6 +39,13 @@ Streams the simulation data to the dashboard.
 python3.10 replay_simulation.py
 ```
 
+**To run Simulation & Visualization:**
+
+```bash
+cd viz
+python3.10 -m http-server
+```
+
 ## Project Structure
 
 - `doppler_pkg/`: Core package
